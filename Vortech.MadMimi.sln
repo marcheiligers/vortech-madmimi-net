@@ -1,6 +1,6 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2010
+Microsoft Visual Studio Solution File, Format Version 9.00
+# Visual Studio 2005
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vortech.MadMimi", "Vortech.MadMimi.csproj", "{343B4781-2CDD-421B-9AF0-D4613B06E2B7}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mailer Example Site", "..\Examples\Mailer Example Site.csproj", "{F89D747C-C190-429C-8B25-19D6B2DA2DF0}"
@@ -19,6 +19,9 @@ Global
 		{F89D747C-C190-429C-8B25-19D6B2DA2DF0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F89D747C-C190-429C-8B25-19D6B2DA2DF0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F89D747C-C190-429C-8B25-19D6B2DA2DF0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(MonoDevelopProperties) = preSolution
+		StartupItem = Vortech.MadMimi.csproj
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

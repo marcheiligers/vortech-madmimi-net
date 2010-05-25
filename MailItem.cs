@@ -1,4 +1,4 @@
-﻿/*=====================================================================================================
+/*=====================================================================================================
  * Class:   Vortech.MadMimi.MailItem
  * Author:  Joshua Jackson <jjackson@vortech.net> http://www.vortech.net
  * Date:    April 17, 2010
@@ -47,6 +47,17 @@ namespace Vortech.MadMimi {
         public MailItem() {
             yamlData = new Dictionary<string, string>();
             BodyType = MadMimiMailType.Html;
+        }
+
+		/// <summary>
+		/// Create a new MailItem with the desired type.
+		/// </summary>
+		/// <param name="bodyType">
+		/// A <see cref="MadMimiMailType"/>
+		/// </param>
+        public MailItem(MadMimiMailType bodyType) {
+            yamlData = new Dictionary<string, string>();
+            BodyType = bodyType;
         }
 
         /// <summary>
@@ -102,15 +113,17 @@ namespace Vortech.MadMimi {
         /// <summary>
         /// Build the complete web request to be sent to MadMimi
         /// </summary>
-        /// <param name="PromoName">Name of the promotion to use</param>
+        /// <param name="promotionName">Name of the promotion to use</param>
         /// <returns>Encoded / Translated version of the web request</returns>
-        public string BuildRequest(string PromoName) {
+        public string BuildRequest(string promotionName) {
             StringBuilder sb = new StringBuilder();
 
-            sb.AppendFormat("promotion_name={0}&", HttpUtility.UrlEncode(PromoName));
-            sb.AppendFormat("recipients={0}&", HttpUtility.UrlEncode(String.Format("{0} <{1}>", Recipient.DisplayName, Recipient.Address)));
-            sb.AppendFormat("subject={0}&", HttpUtility.UrlEncode(Subject));
-            sb.AppendFormat("from={0}&", HttpUtility.UrlEncode(String.Format("{0} <{1}>", Sender.DisplayName, Recipient.Address)));
+            sb.AppendFormat("promotion_name={0}&", HttpUtility.UrlEncode(promotionName));
+			if(Subject != null) {
+            		sb.AppendFormat("subject={0}&", HttpUtility.UrlEncode(Subject));
+			}
+			AddMailAddressRequestPart(sb, "recipients", Recipient);
+			AddMailAddressRequestPart(sb, "from", Sender);
             switch (BodyType) {
                 case MadMimiMailType.Html:
                     sb.AppendFormat("raw_html={0}", Body);
@@ -130,15 +143,35 @@ namespace Vortech.MadMimi {
         /// <summary>
         /// Build the complete web request with list specification to be sent to MadMimi
         /// </summary>
-        /// <param name="PromoName">Promotion name to use</param>
-        /// <param name="ListName">Audience list to send to</param>
+        /// <param name="promotionName">Promotion name to use</param>
+        /// <param name="listName">Audience list to send to</param>
         /// <returns>Encoded / Translated version of the web request</returns>
-        public string BuildRequest(string PromoName, string ListName) {
+        public string BuildRequest(string promotionName, string listName) {
             StringBuilder sb = new StringBuilder();
-            sb.AppendFormat("list_name={0}&", HttpUtility.UrlEncode(ListName));
-            sb.Append(BuildRequest(PromoName));
+            sb.AppendFormat("list_name={0}&", HttpUtility.UrlEncode(listName));
+            sb.Append(BuildRequest(promotionName));
             return sb.ToString();
         }
+		
+		private void AddMailAddressRequestPart(StringBuilder builder, string parameter, MailAddress address) {
+			string formattedAddress;
+			if(address == null || address.Address == null) {
+				return;
+			} else if(address.DisplayName != null) {
+				formattedAddress = address.Address;
+			} else {
+				formattedAddress = String.Format("{0} <{1}>", address.DisplayName, address.Address);
+			}
+			builder.Append(String.Format("{0}={1}&", parameter, HttpUtility.UrlEncode(formattedAddress)));
+		}
+		
+		public string SendTransactional(MailerAPI api, string promotionName) {
+			return api.SendEmail(this, promotionName);
+		}
+		
+		public string SendToList(MailerAPI api, string promotionName, string listName) {
+			return api.SendPromotion(this, listName, promotionName);
+		}
 
     }
 }

@@ -1,4 +1,4 @@
-﻿/*=====================================================================================================
+/*=====================================================================================================
  * Class:   Vortech.MadMimi.MailerAPI
  * Author:  Joshua Jackson <jjackson@vortech.net> http://www.vortech.net
  * Date:    April 17, 2010
@@ -35,6 +35,10 @@ namespace Vortech.MadMimi {
     public class MailerAPI {
         public string Username { get; set; }
         public string APIKey { get; set; }
+		
+		private string MAD_MIMI_MAILER_API_URL = "https://api.madmimi.com/mailer";
+		private string MAD_MIMI_LIST_API_URL = "http://api.madmimi.com";
+		private bool debug = false;
 
         /// <summary>
         /// Initializes a MadMimi Mailer API object
@@ -44,17 +48,30 @@ namespace Vortech.MadMimi {
         public MailerAPI(string username, string apiKey) {
             Username = username;
             APIKey = apiKey;
-            if (HttpContext.Current == null) {
-                throw new Exception("The current HTTP application context is null.");
-            }
+			//Marc says: Why?
+//            if (HttpContext.Current == null) {
+//                throw new Exception("The current HTTP application context is null.");
+//            }
         }
+		
+		public void SetDebugMode() {
+			debug = true;
+		}
+
+		public void SetDebugMode(bool useLocalhost) {
+			if(useLocalhost) {
+				MAD_MIMI_MAILER_API_URL = "http://localhost:3000/mailer";
+				MAD_MIMI_LIST_API_URL = "http://localhost:3000";
+			}
+			debug = true;
+		}
 
         private string GetMadMimiMailerURL(string purl) {
-            return String.Format("{0}{1}", "https://api.madmimi.com/mailer", purl);
+            return String.Format("{0}{1}", MAD_MIMI_MAILER_API_URL, purl);
         }
 
         private string GetMadMimiURL(string purl) {
-            return String.Format("{0}{1}", "http://api.madmimi.com", purl);
+            return String.Format("{0}{1}", MAD_MIMI_LIST_API_URL, purl);
         }
 
         private HttpWebResponse PostToMadMimi(string url, string data, bool useMailer) {
@@ -66,6 +83,10 @@ namespace Vortech.MadMimi {
 
                 string reqStr = String.Format("username={0}&api_key={1}&{2}", Username, APIKey, data);
                 req.ContentLength = reqStr.Length;
+				
+				if(debug) {
+					Console.WriteLine(reqStr);
+				}
 
                 StreamWriter reqStream = new StreamWriter(req.GetRequestStream(), System.Text.Encoding.ASCII);
                 reqStream.Write(reqStr);
@@ -85,7 +106,7 @@ namespace Vortech.MadMimi {
                 string reqStr = String.Format("{0}&username={1}&api_key={2}", url, Username, APIKey);
                                 
                 HttpWebRequest req = (HttpWebRequest)WebRequest.Create(
-                    (useMailer) ? GetMadMimiMailerURL(url) : GetMadMimiURL(url));
+                    (useMailer) ? GetMadMimiMailerURL(reqStr) : GetMadMimiURL(reqStr));
                 req.Method = "GET";
                 req.ContentType = "application/x-www-form-urlencoded";
                 req.ContentLength = 0;
@@ -138,7 +159,7 @@ namespace Vortech.MadMimi {
         public XmlDocument AudienceListSearch(string queryStr) {
             string url = GetMadMimiURL("/audience_members/search.xml");
             XmlDocument ret = new XmlDocument();
-            ret.Load(String.Format("{0}?username={1}&api_key={2}&query={3}", HttpUtility.UrlEncode(Username), APIKey, HttpUtility.UrlEncode(queryStr)));
+            ret.Load(String.Format("{0}?username={1}&api_key={2}&query={3}", url, HttpUtility.UrlEncode(Username), APIKey, HttpUtility.UrlEncode(queryStr)));
             return ret;
         }
 
@@ -181,41 +202,93 @@ namespace Vortech.MadMimi {
         /// <param name="listName">Name of audience list</param>
         /// <returns>True if a status code of OK is returned</returns>
         public bool AudienceImport(DataSet userInfo, string listName) {
-
             if (userInfo.Tables.Count < 1) {
                 return false;
             }
 
-            if (userInfo.Tables[0].Rows.Count < 2) {
+            if (userInfo.Tables[0].Rows.Count < 1) { //Marc says: made this 1. TODO: validate that email is a column
                 return false;
             }
-
+			
+			return AudienceImport(userInfo.Tables[0], listName);
+        }
+		
+		/// <summary>
+		/// Imports a data table of audience members into Mimi. By Marc Heiligers (marc@madmimi.com)
+		/// </summary>
+		/// <param name="audienceMembers">
+		/// The datatable containing the audience member information (note: there must be an 'email' column) <see cref="DataTable"/>
+		/// </param>
+		/// <returns>
+		/// True is successful, false otherwise <see cref="System.Boolean"/>
+		/// </returns>
+		public bool AudienceImport(DataTable audienceMembers) {
+			return AudienceImport(audienceMembers, null);
+		}
+		
+		/// <summary>
+		/// Imports a data table of audience members into Mimi. By Marc Heiligers (marc@madmimi.com)
+		/// </summary>
+		/// <param name="audienceMembers">
+		/// The datatable containing the audience member information (note: there must be an 'email' column) <see cref="DataTable"/>
+		/// </param>
+		/// <param name="listName">
+		/// An optional name of a list that the audience members should be imported into <see cref="System.String"/>
+		/// </param>
+		/// <returns>
+		/// True is successful, false otherwise <see cref="System.Boolean"/>
+		/// </returns>
+		public bool AudienceImport(DataTable audienceMembers, string listName) {
             StringBuilder reqData = new StringBuilder();
 
-            using (DataTable dt = userInfo.Tables[0]) {
-                string[] cols = new string[dt.Columns.Count];
-                int idx = 0;
-                foreach (DataColumn dc in dt.Columns) {
-                    cols[idx] = HttpUtility.UrlEncode(dc.ColumnName);
-                    idx++;
-                }
-                reqData.AppendLine(String.Join(",", cols));
+            string[] cols = new string[audienceMembers.Columns.Count + (listName == null ? 0 : 1)];
+            int idx = 0;
+            foreach (DataColumn dc in audienceMembers.Columns) {
+                cols[idx] = FormatCsvValue(dc.ColumnName);
+                idx++;
+            }
+			if(listName != null) {
+				cols[idx] = "add_list"; //Special Mimi Column to add imported members to a list
+			}
+            reqData.AppendLine(String.Join(",", cols));
 
-                string[] rowData = new string[dt.Columns.Count];
-                foreach (DataRow dr in dt.Rows) {
-
-                    for (idx = 0; idx < dt.Columns.Count; idx++) {
-                        rowData[idx] = HttpUtility.UrlEncode(dr[idx].ToString());
-                    }
-                    reqData.AppendLine(String.Join(",", rowData));
+            string[] rowData = new string[audienceMembers.Columns.Count + (listName == null ? 0 : 1)];
+            foreach (DataRow dr in audienceMembers.Rows) {
+                for (idx = 0; idx < audienceMembers.Columns.Count; idx++) {
+                    rowData[idx] = FormatCsvValue(dr[idx].ToString());
                 }
+				if(listName != null) {
+					rowData[idx] = FormatCsvValue(listName); //The list name to add to if supplied
+				}
+                reqData.AppendLine(String.Join(",", rowData));
             }
 
             string data = String.Format("csv_file={0}", HttpUtility.UrlEncode(reqData.ToString()));
             HttpWebResponse resp = PostToMadMimi("/audience_members", data);
 
             return ((resp != null) && (resp.StatusCode == HttpStatusCode.OK));
-        }
+		}
+		
+		/// <summary>
+		/// This function comes from the closed source library ETechnik.Utility2. 
+		/// As a Director of E-Technik, and the original author of the library I am 
+		/// giving permission to use this function in this library (marc@e-technik.com).  
+		/// </summary>
+		/// <param name="value">
+		/// the value to be formatted for use in a csv file <see cref="System.String"/>
+		/// </param>
+		/// <returns>
+		/// the value formatted for use in a csv file <see cref="System.String"/>
+		/// </returns>
+		private static string FormatCsvValue(string value) {
+			if(value == null) {
+				return "";
+			} else if (value.IndexOf(',') != -1) {
+				return "\"" + value.Replace("\"", "\"\"").Replace("\n", "\\n").Replace("\r", "\\r") + "\"";
+			} else {
+				return value.Replace("\n", "\\n").Replace("\r", "\\r");
+			}
+		}
 
         /// <summary>
         /// Gets the list membership status information for the specified email
@@ -325,10 +398,10 @@ namespace Vortech.MadMimi {
         /// </summary>
         /// <param name="item">Mailer Item to send</param>
         /// <param name="listName">Audience List to send to</param>
-        /// <param name="promoName">Name of the promotion</param>
+        /// <param name="promotionName">Name of the promotion</param>
         /// <returns>Transaction ID</returns>
-        public string SendPromotion(MailItem item, string listName, string promoName) {
-            HttpWebResponse resp = PostToMadMimi("/to_list", item.BuildRequest(promoName, listName), true);
+        public string SendPromotion(MailItem item, string listName, string promotionName) {
+            HttpWebResponse resp = PostToMadMimi("/to_list", item.BuildRequest(promotionName, listName), true);
             if (resp.StatusCode == HttpStatusCode.OK) {
                 StreamReader stIn = new StreamReader(resp.GetResponseStream());
                 string strResponse = stIn.ReadToEnd();

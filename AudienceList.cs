@@ -1,4 +1,4 @@
-﻿/*=====================================================================================================
+/*=====================================================================================================
  * Class:   Vortech.MadMimi.AudienceList
  * Author:  Joshua Jackson <jjackson@vortech.net> http://www.vortech.net
  * Date:    April 30, 2010
@@ -39,7 +39,7 @@ namespace Vortech.MadMimi {
         }
 
         public AudienceList(MailerAPI mailer) {
-            Mailer = mailer;
+            Mailer = mailer; //Marc says: this value is never used.
             _init();
         }
 
