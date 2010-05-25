@@ -47,6 +47,8 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="AudienceMember.cs" />
     <Compile Include="AudienceMemberCollection.cs" />
+    <Compile Include="ApiResult.cs" />
+    <Compile Include="ApiException.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="LICENSE.txt" />

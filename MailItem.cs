@@ -165,11 +165,11 @@ namespace Vortech.MadMimi {
 			builder.Append(String.Format("{0}={1}&", parameter, HttpUtility.UrlEncode(formattedAddress)));
 		}
 		
-		public string SendTransactional(MailerAPI api, string promotionName) {
+		public ApiResult SendTransactional(MailerAPI api, string promotionName) {
 			return api.SendEmail(this, promotionName);
 		}
 		
-		public string SendToList(MailerAPI api, string promotionName, string listName) {
+		public ApiResult SendToList(MailerAPI api, string promotionName, string listName) {
 			return api.SendPromotion(this, listName, promotionName);
 		}
 

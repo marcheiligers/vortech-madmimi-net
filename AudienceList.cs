@@ -44,11 +44,7 @@ namespace Vortech.MadMimi {
         }
 
         public static bool Create(MailerAPI mailer, string ListName) {
-            try {
-                return mailer.AudienceListAdd(ListName);
-            } catch {
-                return false;
-            }
+            return mailer.AudienceListAdd(ListName).IsSuccess;
         }
 
         public static List<AudienceList> GetLists(MailerAPI mailer) {

@@ -9,13 +9,13 @@ using System.Data;
 namespace Vortech.MadMimi
 {
 	public class AudienceMemberCollection : List<AudienceMember> {
-		public bool Import(MailerAPI api) {
+		public ApiResult Import(MailerAPI api) {
 			using(DataTable table = ToDataTable()) {
 				return api.AudienceImport(table);
 			}
 		}
 		
-		public bool Import(MailerAPI api, string listName) {
+		public ApiResult Import(MailerAPI api, string listName) {
 			using(DataTable table = ToDataTable()) {
 				return api.AudienceImport(table, listName);
 			}

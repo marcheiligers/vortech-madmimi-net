@@ -35,10 +35,13 @@ namespace Vortech.MadMimi {
     public class MailerAPI {
         public string Username { get; set; }
         public string APIKey { get; set; }
+		public bool ThrowExceptions { get; set; }
+		
 		
 		private string MAD_MIMI_MAILER_API_URL = "https://api.madmimi.com/mailer";
 		private string MAD_MIMI_LIST_API_URL = "http://api.madmimi.com";
 		private bool debug = false;
+		private ApiResult lastResult;
 
         /// <summary>
         /// Initializes a MadMimi Mailer API object
@@ -48,10 +51,12 @@ namespace Vortech.MadMimi {
         public MailerAPI(string username, string apiKey) {
             Username = username;
             APIKey = apiKey;
-			//Marc says: Why?
-//            if (HttpContext.Current == null) {
-//                throw new Exception("The current HTTP application context is null.");
-//            }
+        }
+		
+        public MailerAPI(string username, string apiKey, bool throwExceptions) {
+            Username = username;
+            APIKey = apiKey;
+            ThrowExceptions = throwExceptions;
         }
 		
 		public void SetDebugMode() {
@@ -65,7 +70,7 @@ namespace Vortech.MadMimi {
 			}
 			debug = true;
 		}
-
+		
         private string GetMadMimiMailerURL(string purl) {
             return String.Format("{0}{1}", MAD_MIMI_MAILER_API_URL, purl);
         }
@@ -73,11 +78,12 @@ namespace Vortech.MadMimi {
         private string GetMadMimiURL(string purl) {
             return String.Format("{0}{1}", MAD_MIMI_LIST_API_URL, purl);
         }
-
-        private HttpWebResponse PostToMadMimi(string url, string data, bool useMailer) {
+        
+        private ApiResult PostToMadMimi(string url, string data, bool useMailer) {
             try {
-                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(
-                    (useMailer) ? GetMadMimiMailerURL(url) : GetMadMimiURL(url));
+                HttpWebRequest req = (HttpWebRequest) WebRequest.Create(
+                    (useMailer) ? GetMadMimiMailerURL(url) : GetMadMimiURL(url)
+                );
                 req.Method = "POST";
                 req.ContentType = "application/x-www-form-urlencoded";
 
@@ -88,35 +94,52 @@ namespace Vortech.MadMimi {
 					Console.WriteLine(reqStr);
 				}
 
-                StreamWriter reqStream = new StreamWriter(req.GetRequestStream(), System.Text.Encoding.ASCII);
-                reqStream.Write(reqStr);
-                reqStream.Close();
-                return (HttpWebResponse)(req.GetResponse());
-            } catch {
-                return null;
+                using(StreamWriter reqStream = new StreamWriter(req.GetRequestStream(), System.Text.Encoding.ASCII)) {
+                    reqStream.Write(reqStr);
+                    reqStream.Close();
+                }
+                
+                lastResult = new ApiResult((HttpWebResponse) req.GetResponse());
+            } catch (Exception ex) {
+                lastResult = new ApiResult(ex);
+                if (ThrowExceptions) {
+                    throw new ApiException(ex);
+                }
             }
+            if(lastResult.IsError && ThrowExceptions) {
+            		throw new ApiException(lastResult);
+			}
+			return lastResult;
         }
 
-        private HttpWebResponse PostToMadMimi(string url, string data) {
+        private ApiResult PostToMadMimi(string url, string data) {
             return PostToMadMimi(url, data, false);
         }
 
-        private HttpWebResponse GetFromMadMimi(string url, bool useMailer) {
+        private ApiResult GetFromMadMimi(string url, bool useMailer) {
             try {
                 string reqStr = String.Format("{0}&username={1}&api_key={2}", url, Username, APIKey);
                                 
                 HttpWebRequest req = (HttpWebRequest)WebRequest.Create(
-                    (useMailer) ? GetMadMimiMailerURL(reqStr) : GetMadMimiURL(reqStr));
+                    (useMailer) ? GetMadMimiMailerURL(reqStr) : GetMadMimiURL(reqStr)
+                );
                 req.Method = "GET";
                 req.ContentType = "application/x-www-form-urlencoded";
                 req.ContentLength = 0;
                 StreamWriter reqStream = new StreamWriter(req.GetRequestStream(), System.Text.Encoding.ASCII);
                 reqStream.Close();
-                return (HttpWebResponse)(req.GetResponse());
-            } catch {
-                return null;
+                
+                lastResult = new ApiResult((HttpWebResponse) req.GetResponse());
+            } catch(Exception ex) {
+                lastResult = new ApiResult(ex);
+                if (ThrowExceptions) {
+                    throw new ApiException(ex);
+                }
             }
-
+            if(lastResult.IsError && ThrowExceptions) {
+            		throw new ApiException(lastResult);
+			}
+			return lastResult;
         }
 
         /// <summary>
@@ -135,10 +158,9 @@ namespace Vortech.MadMimi {
         /// </summary>
         /// <param name="listName">Name of list to create</param>
         /// <returns>True if an OK status is returned</returns>
-        public bool AudienceListAdd(string listName) {
+        public ApiResult AudienceListAdd(string listName) {
             string reqStr = String.Format("name={0}", HttpUtility.UrlEncode(listName));
-            HttpWebResponse resp = PostToMadMimi("/audience_lists", reqStr);
-            return ((resp != null) && (resp.StatusCode == HttpStatusCode.OK));
+            return PostToMadMimi("/audience_lists", reqStr);
         }
 
         /// <summary>
@@ -146,9 +168,8 @@ namespace Vortech.MadMimi {
         /// </summary>
         /// <param name="listName">Name of the list to delete</param>
         /// <returns>True if an OK status is returned</returns>
-        public bool AudienceListDelete(string listName) {
-            HttpWebResponse resp = PostToMadMimi(String.Format("/audience_lists/{0}", HttpUtility.UrlEncode(listName)), "_method=delete");
-            return ((resp != null) && (resp.StatusCode == HttpStatusCode.OK));
+        public ApiResult AudienceListDelete(string listName) {
+            return PostToMadMimi(String.Format("/audience_lists/{0}", HttpUtility.UrlEncode(listName)), "_method=delete");
         }
 
         /// <summary>
@@ -156,6 +177,7 @@ namespace Vortech.MadMimi {
         /// </summary>
         /// <param name="queryStr">Search parameteres</param>
         /// <returns>Up to 100 matching audience members</returns>
+        //TODO: return AudienceMemberCollection
         public XmlDocument AudienceListSearch(string queryStr) {
             string url = GetMadMimiURL("/audience_members/search.xml");
             XmlDocument ret = new XmlDocument();
@@ -167,6 +189,7 @@ namespace Vortech.MadMimi {
         /// Gets a list of current audience lists
         /// </summary>
         /// <returns>XML document containing existing audience list information</returns>
+        //TODO: return a AudienceListCollection
         public XmlDocument AudienceLists() {
             string url  = GetMadMimiURL("/audience_lists/lists.xml");
             XmlDocument ret = new XmlDocument();
@@ -180,7 +203,7 @@ namespace Vortech.MadMimi {
         /// <param name="emailList">List of email addresses to import</param>
         /// <param name="listName">Name of audience list</param>
         /// <returns>True if a status code of OK is returned</returns>
-        public bool AudienceImport(List<String> emailList, string listName) {
+        public ApiResult AudienceImport(List<String> emailList, string listName) {
 
             DataSet ds = new DataSet();
             DataTable dt = new DataTable();
@@ -201,13 +224,13 @@ namespace Vortech.MadMimi {
         /// <param name="userInfo">Dataset of accounts to import</param>
         /// <param name="listName">Name of audience list</param>
         /// <returns>True if a status code of OK is returned</returns>
-        public bool AudienceImport(DataSet userInfo, string listName) {
+        public ApiResult AudienceImport(DataSet userInfo, string listName) {
             if (userInfo.Tables.Count < 1) {
-                return false;
+                return new ApiResult(new ArgumentException("No tables in userInfo"));
             }
 
             if (userInfo.Tables[0].Rows.Count < 1) { //Marc says: made this 1. TODO: validate that email is a column
-                return false;
+                return new ApiResult(new ArgumentException("No columns in zeroth table in userInfo"));
             }
 			
 			return AudienceImport(userInfo.Tables[0], listName);
@@ -222,7 +245,7 @@ namespace Vortech.MadMimi {
 		/// <returns>
 		/// True is successful, false otherwise <see cref="System.Boolean"/>
 		/// </returns>
-		public bool AudienceImport(DataTable audienceMembers) {
+		public ApiResult AudienceImport(DataTable audienceMembers) {
 			return AudienceImport(audienceMembers, null);
 		}
 		
@@ -238,35 +261,44 @@ namespace Vortech.MadMimi {
 		/// <returns>
 		/// True is successful, false otherwise <see cref="System.Boolean"/>
 		/// </returns>
-		public bool AudienceImport(DataTable audienceMembers, string listName) {
-            StringBuilder reqData = new StringBuilder();
+		public ApiResult AudienceImport(DataTable audienceMembers, string listName) {
+		    try {
+                StringBuilder reqData = new StringBuilder();
 
-            string[] cols = new string[audienceMembers.Columns.Count + (listName == null ? 0 : 1)];
-            int idx = 0;
-            foreach (DataColumn dc in audienceMembers.Columns) {
-                cols[idx] = FormatCsvValue(dc.ColumnName);
-                idx++;
-            }
-			if(listName != null) {
-				cols[idx] = "add_list"; //Special Mimi Column to add imported members to a list
-			}
-            reqData.AppendLine(String.Join(",", cols));
-
-            string[] rowData = new string[audienceMembers.Columns.Count + (listName == null ? 0 : 1)];
-            foreach (DataRow dr in audienceMembers.Rows) {
-                for (idx = 0; idx < audienceMembers.Columns.Count; idx++) {
-                    rowData[idx] = FormatCsvValue(dr[idx].ToString());
+                string[] cols = new string[audienceMembers.Columns.Count + (listName == null ? 0 : 1)];
+                int idx = 0;
+                foreach (DataColumn dc in audienceMembers.Columns) {
+                    cols[idx] = FormatCsvValue(dc.ColumnName);
+                    idx++;
                 }
-				if(listName != null) {
-					rowData[idx] = FormatCsvValue(listName); //The list name to add to if supplied
-				}
-                reqData.AppendLine(String.Join(",", rowData));
+	    			if(listName != null) {
+	    				cols[idx] = "add_list"; //Special Mimi Column to add imported members to a list
+	    			}
+                reqData.AppendLine(String.Join(",", cols));
+
+                string[] rowData = new string[audienceMembers.Columns.Count + (listName == null ? 0 : 1)];
+                foreach (DataRow dr in audienceMembers.Rows) {
+                    for (idx = 0; idx < audienceMembers.Columns.Count; idx++) {
+                        rowData[idx] = FormatCsvValue(dr[idx].ToString());
+                    }
+    				if(listName != null) {
+    					rowData[idx] = FormatCsvValue(listName); //The list name to add to if supplied
+    				}
+                    reqData.AppendLine(String.Join(",", rowData));
+                }
+
+                string data = String.Format("csv_file={0}", HttpUtility.UrlEncode(reqData.ToString()));
+                PostToMadMimi("/audience_members", data);
+            } catch(Exception ex) {
+                lastResult = new ApiResult(ex);
+                if (ThrowExceptions) {
+                    throw new ApiException(ex);
+                }
             }
-
-            string data = String.Format("csv_file={0}", HttpUtility.UrlEncode(reqData.ToString()));
-            HttpWebResponse resp = PostToMadMimi("/audience_members", data);
-
-            return ((resp != null) && (resp.StatusCode == HttpStatusCode.OK));
+            if(lastResult.IsError && ThrowExceptions) {
+            		throw new ApiException(lastResult);
+			}
+			return lastResult;
 		}
 		
 		/// <summary>
@@ -308,13 +340,10 @@ namespace Vortech.MadMimi {
         /// <param name="userEmail">Email of existing audience member</param>
         /// <param name="listName">Name of audience list to add email to</param>
         /// <returns>True if a status code of OK is returned</returns>
-        public bool AddAudienceListMembership(string userEmail, string listName) {
-
+        public ApiResult AddAudienceListMembership(string userEmail, string listName) {
             string data = String.Format("email={0}", HttpUtility.UrlEncode(userEmail));
             string url = String.Format("/audience_lists/{0}/add", HttpUtility.UrlEncode(listName));
-            HttpWebResponse ret = PostToMadMimi(url, data);
-
-            return ((ret != null) && (ret.StatusCode == HttpStatusCode.OK));
+            return PostToMadMimi(url, data);
         }
 
         /// <summary>
@@ -323,10 +352,9 @@ namespace Vortech.MadMimi {
         /// <param name="userEmail">Email address to remove</param>
         /// <param name="listName">Name of audience list</param>
         /// <returns>True if a status code of OK is returned</returns>
-        public bool RemoveAudienceListMembership(string userEmail, string listName) {
+        public ApiResult RemoveAudienceListMembership(string userEmail, string listName) {
             string data = String.Format("email={0}", userEmail);
-            HttpWebResponse ret = PostToMadMimi(String.Format("/audience_lists/{0}/remove", HttpUtility.UrlEncode(listName)), data);
-            return ((ret != null) && (ret.StatusCode == HttpStatusCode.OK));
+            return PostToMadMimi(String.Format("/audience_lists/{0}/remove", HttpUtility.UrlEncode(listName)), data);
         }
 
         /// <summary>
@@ -335,19 +363,14 @@ namespace Vortech.MadMimi {
         /// <param name="date">Start date of suppression list</param>
         /// <returns>List of strings containing suppressed email addresses</returns>
         public List<String> SuppressedSince(DateTime date) {
-
             int ts = DateTimeToUnixTime(date);
-            List<String> ret = new List<string>();
 
-            HttpWebResponse resp = GetFromMadMimi(String.Format("/audience_members/suppressed_since/{0}.txt", ts.ToString()), false);
-            if ((resp != null) && (resp.StatusCode == HttpStatusCode.OK)) {
-                StreamReader sr = new StreamReader(resp.GetResponseStream());
-                while(sr.Peek() >= 0) {
-                    ret.Add(sr.ReadLine());
-                }
-                sr.Close();
-            }
-            return ret;
+            lastResult = GetFromMadMimi(String.Format("/audience_members/suppressed_since/{0}.txt", ts.ToString()), false);
+            if(lastResult.IsSuccess) {
+				return new List<string>(lastResult.ResultBody.Split('\n'));
+            } else {
+				return null;
+			}
         }
 
         /// <summary>
@@ -380,16 +403,8 @@ namespace Vortech.MadMimi {
         /// </summary>
         /// <param name="item">Mailer Item to send</param>
         /// <returns>Transaction ID</returns>
-        public string SendEmail(MailItem item, string promoName) {
-            HttpWebResponse resp = PostToMadMimi("", item.BuildRequest(promoName), true);
-            if (resp.StatusCode == HttpStatusCode.OK) {
-                StreamReader stIn = new StreamReader(resp.GetResponseStream());
-                string strResponse = stIn.ReadToEnd();
-                stIn.Close();
-                return strResponse;
-            } else {
-                return "";
-            }
+        public ApiResult SendEmail(MailItem item, string promoName) {
+            return PostToMadMimi("", item.BuildRequest(promoName), true);
         }
 
         /// <summary>
@@ -400,16 +415,8 @@ namespace Vortech.MadMimi {
         /// <param name="listName">Audience List to send to</param>
         /// <param name="promotionName">Name of the promotion</param>
         /// <returns>Transaction ID</returns>
-        public string SendPromotion(MailItem item, string listName, string promotionName) {
-            HttpWebResponse resp = PostToMadMimi("/to_list", item.BuildRequest(promotionName, listName), true);
-            if (resp.StatusCode == HttpStatusCode.OK) {
-                StreamReader stIn = new StreamReader(resp.GetResponseStream());
-                string strResponse = stIn.ReadToEnd();
-                stIn.Close();
-                return strResponse;
-            } else {
-                return "";
-            }
+        public ApiResult SendPromotion(MailItem item, string listName, string promotionName) {
+            return PostToMadMimi("/to_list", item.BuildRequest(promotionName, listName), true);
         }
 
 
@@ -420,16 +427,13 @@ namespace Vortech.MadMimi {
         /// <returns>Status of the email</returns>
         public MadMimiMailStatus GetEmailStatus(string TransactionID) {
             // Note: This call requires the path /mailers/ instead of /mailer/  - not sure why this was done
-            HttpWebResponse resp = GetFromMadMimi(String.Format("s/status/{0}", TransactionID), true);
+			// Marc says: Wow! That's the first time I've become aware of that. TODO: Fix (but allow both so as not to break production code)
+            GetFromMadMimi(String.Format("s/status/{0}", TransactionID), true);
 
-            if (resp.StatusCode == HttpStatusCode.OK) {
-                StreamReader stIn = new StreamReader(resp.GetResponseStream());
-                string strResponse = stIn.ReadToEnd();
-                stIn.Close();
-                return (MadMimiMailStatus)(Enum.Parse(typeof(MadMimiMailStatus), strResponse));
-            } else {
-                throw new Exception("Failed to retrieve mailer status for item " + TransactionID);
+            if(lastResult.IsSuccess) {
+                return (MadMimiMailStatus)(Enum.Parse(typeof(MadMimiMailStatus), lastResult.ResultBody));
             }
+			return MadMimiMailStatus.ignorant;
         }
     }
 }
